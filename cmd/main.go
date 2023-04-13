@@ -97,34 +97,34 @@ func main() {
 			three
 		)
 
-		dataBySymID := make([]struct{ ticker, price, change24 string }, len(symIDs))
+		dataBySymIndx := make([]struct{ ticker, price, change24 string }, len(symIDs))
 		maxColsLen := make([]int, len(titleParts))
 
-		for i, col := range titleParts {
-			maxColsLen[i] = len(col)
+		for colIndx, col := range titleParts {
+			maxColsLen[colIndx] = len(col)
 
-			for i2, symID := range symIDs[1:] {
+			for simIndx, symID := range symIDs[1:] {
 				var symLen int
 
-				switch i {
+				switch colIndx {
 				case one:
-					dataBySymID[i2].ticker = data.Data[symID].Symbol
-					symLen = len(dataBySymID[one].ticker)
+					dataBySymIndx[simIndx].ticker = data.Data[symID].Symbol
+					symLen = len(dataBySymIndx[simIndx].ticker)
 				case two:
-					dataBySymID[i2].price = fmt.Sprintf("%0.3f", data.Data[symID].Quote[convertID].Price)
-					symLen = len(dataBySymID[one].price)
+					dataBySymIndx[simIndx].price = fmt.Sprintf("%0.3f", data.Data[symID].Quote[convertID].Price)
+					symLen = len(dataBySymIndx[simIndx].price)
 				case three:
-					dataBySymID[i2].change24 = fmt.Sprintf("%0.2f", data.Data[symID].Quote[convertID].PercentChange24h)
-					symLen = len(dataBySymID[i2].change24)
+					dataBySymIndx[simIndx].change24 = fmt.Sprintf("%0.2f", data.Data[symID].Quote[convertID].PercentChange24h)
+					symLen = len(dataBySymIndx[simIndx].change24)
 				}
 
-				if maxColsLen[i] < symLen {
-					maxColsLen[i] = symLen
+				if maxColsLen[colIndx] < symLen {
+					maxColsLen[colIndx] = symLen
 				}
 			}
 
-			if i != one {
-				maxColsLen[i]++ // Add an indent between columns
+			if colIndx != one {
+				maxColsLen[colIndx]++ // Add an indent between columns
 			}
 		}
 
@@ -143,9 +143,9 @@ func main() {
 		fmt.Fprint(&b, "</b>\n")
 
 		for i := range symIDs[1:] {
-			fmt.Fprintf(&b, fmtPattern(one), dataBySymID[i].ticker)
-			fmt.Fprintf(&b, fmtPattern(two), dataBySymID[i].price)
-			fmt.Fprintf(&b, fmtPattern(three), dataBySymID[i].change24)
+			fmt.Fprintf(&b, fmtPattern(one), dataBySymIndx[i].ticker)
+			fmt.Fprintf(&b, fmtPattern(two), dataBySymIndx[i].price)
+			fmt.Fprintf(&b, fmtPattern(three), dataBySymIndx[i].change24)
 			fmt.Fprintln(&b)
 		}
 	}
