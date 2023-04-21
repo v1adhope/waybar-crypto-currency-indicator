@@ -33,12 +33,12 @@ func main() {
 
 	api := os.Getenv(_envAPI)
 
-	err := getEnv(_envFavoriteCoin, &convertID)
+	err := fillVarByEnvKey(_envFavoriteCoin, &convertID)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	err = getEnv(_envWatchList, &rawSymIDs)
+	err = fillVarByEnvKey(_envWatchList, &rawSymIDs)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func main() {
 	fmt.Println(string(json))
 }
 
-func getEnv(key string, placeholder *string) error {
+func fillVarByEnvKey(key string, placeholder *string) error {
 	if env := os.Getenv(key); env != "" {
 		for _, v := range env {
 			if byte(v) == 44 || (byte(v) < 58 && byte(v) > 47) {
