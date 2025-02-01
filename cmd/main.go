@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -8,157 +9,107 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/v1adhope/waybar-crypto-currency-indicator/structure"
 )
 
 const (
-	_envAPI          = "CRYPTO_CURRENCY_API"
+	_envApiToken     = "CRYPTO_CURRENCY_API"
 	_envFavoriteCoin = "CRYPTO_CURRENCY_FV"
 	_envWatchList    = "CRYPTO_CURRENCY_WL"
 )
 
-// NOTE: Output structure. Read more
-// https://github.com/Alexays/Waybar/wiki/Module:-Custom#return-type
-type waybar struct {
+// Read more https://github.com/Alexays/Waybar/wiki/Module:-Custom#return-type
+type module struct {
 	Text    string `json:"text"`
 	Tooltip string `json:"tooltip,omitempty"`
 }
 
 func main() {
-	convertID, rawSymIDs := "2781", "1,1027,6636"
+	convertId, rawCoinIds := "2781", "1,1027,6636"
 
-	api := os.Getenv(_envAPI)
+	apiToken := os.Getenv(_envApiToken)
 
-	err := fillVarByEnvKey(_envFavoriteCoin, &convertID)
-	if err != nil {
+	if err := fillVarByEnvKey(_envFavoriteCoin, &convertId); err != nil {
 		log.Fatal(err)
 	}
 
-	err = fillVarByEnvKey(_envWatchList, &rawSymIDs)
-	if err != nil {
+	if err := fillVarByEnvKey(_envWatchList, &rawCoinIds); err != nil {
 		log.Fatal(err)
 	}
-
-	client, query := &http.Client{}, &url.Values{}
 
 	req, err := http.NewRequest("GET", "https://pro-api.coinmarketcap.com/v2/cryptocurrency/quotes/latest", nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	query := &url.Values{}
+	query.Add("id", rawCoinIds)
+	query.Add("convert_id", convertId)
+
 	req.Header.Set("Accepts", "application/json")
-	req.Header.Add("X-CMC_PRO_API_KEY", api)
-
-	query.Add("id", rawSymIDs)
-	query.Add("convert_id", convertID)
-
+	req.Header.Add("X-CMC_PRO_API_KEY", apiToken)
 	req.URL.RawQuery = query.Encode()
 
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Fatal(err)
-	}
+	data := structure.Data{}
+	func() {
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if resp != nil {
+			defer resp.Body.Close()
+		}
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	var data structure.Data
+		if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+			log.Fatal(err)
+		}
+	}()
 
-	err = json.NewDecoder(resp.Body).Decode(&data)
-	if err != nil {
-		log.Fatal(err)
-	}
+	module := module{}
+	coinIds := strings.Split(rawCoinIds, ",")
 
-	var (
-		w waybar
-		b strings.Builder
-	)
-
-	symIDs := strings.Split(rawSymIDs, ",")
-
-	symFirst := symIDs[0]
-	if data.Data[symFirst].IsFiat == 0 {
-		w.Text = strconv.FormatFloat(data.Data[symFirst].Quote[convertID].Price, 'f', 3, 64)
+	coinIdFirst := coinIds[0]
+	if data.Data[coinIdFirst].IsFiat == 0 {
+		module.Text = fmt.Sprintf("%0.3f", data.Data[coinIdFirst].Quote[convertId].Price)
 	} else {
-		w.Text = strconv.FormatFloat(1/data.Data[symFirst].Quote[convertID].Price, 'f', 3, 64)
+		module.Text = fmt.Sprintf("%0.3f", 1/data.Data[coinIdFirst].Quote[convertId].Price)
 	}
 
-	if len(symIDs) > 1 {
-		titleParts := []string{
-			"Ticker",
-			"Price",
-			"24h%",
+	buf := bytes.Buffer{}
+
+	func() {
+		w := tabwriter.NewWriter(&buf, 0, 0, 1, ' ', tabwriter.AlignRight)
+		defer w.Flush()
+
+		fmt.Fprintf(w, "%-6s\t%s\t%s\t\n", "Ticker", "Price", "24h%")
+
+		for _, coinId := range coinIds[1:] {
+			fmt.Fprintf(w,
+				"%-6s\t%0.3f\t%0.2f\t\n",
+				data.Data[coinId].Symbol,
+				data.Data[coinId].Quote[convertId].Price,
+				data.Data[coinId].Quote[convertId].PercentChange24h,
+			)
 		}
-
-		const ( // Column numbers
-			one = iota
-			two
-			three
-		)
-
-		dataBySymIndx := make([]struct{ ticker, price, change24 string }, len(symIDs))
-		maxColsLen := make([]int, len(titleParts))
-
-		for colIndx, col := range titleParts {
-			maxColsLen[colIndx] = len(col)
-
-			for simIndx, symID := range symIDs[1:] {
-				var symLen int
-
-				switch colIndx {
-				case one:
-					dataBySymIndx[simIndx].ticker = data.Data[symID].Symbol
-					symLen = len(dataBySymIndx[simIndx].ticker)
-				case two:
-					dataBySymIndx[simIndx].price = fmt.Sprintf("%0.3f", data.Data[symID].Quote[convertID].Price)
-					symLen = len(dataBySymIndx[simIndx].price)
-				case three:
-					dataBySymIndx[simIndx].change24 = fmt.Sprintf("%0.2f", data.Data[symID].Quote[convertID].PercentChange24h)
-					symLen = len(dataBySymIndx[simIndx].change24)
-				}
-
-				if maxColsLen[colIndx] < symLen {
-					maxColsLen[colIndx] = symLen
-				}
-			}
-
-			if colIndx != one {
-				maxColsLen[colIndx]++ // Add an indent between columns
-			}
-		}
-
-		fmtPattern := func(colNum int) string {
-			if colNum == one {
-				return fmt.Sprintf("%%-%ds", maxColsLen[colNum])
-			} else {
-				return fmt.Sprintf("%%%ds", maxColsLen[colNum])
-			}
-		}
-
-		fmt.Fprint(&b, "<b>")
-		for colNum, title := range titleParts {
-			fmt.Fprintf(&b, fmtPattern(colNum), title)
-		}
-		fmt.Fprint(&b, "</b>\n")
-
-		for i := range symIDs[1:] {
-			fmt.Fprintf(&b, fmtPattern(one), dataBySymIndx[i].ticker)
-			fmt.Fprintf(&b, fmtPattern(two), dataBySymIndx[i].price)
-			fmt.Fprintf(&b, fmtPattern(three), dataBySymIndx[i].change24)
-			fmt.Fprintln(&b)
-		}
-	}
+	}()
 
 	t, err := time.Parse(time.RFC3339Nano, data.Status.Timestamp)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Fprintf(&b, "\n<b>Timestamp</b>\n%s", t.Local().Format(time.DateTime))
+	fmt.Fprint(&buf, "\n <b>Timestamp</b>\n "+t.Local().Format(time.DateTime))
 
-	w.Tooltip = b.String()
+	module.Tooltip = buf.String()
+	module.Tooltip = strings.Replace(module.Tooltip, "Ticker", "<b>Ticker</b>", 1)
+	module.Tooltip = strings.Replace(module.Tooltip, "Price", "<b>Price</b>", 1)
+	module.Tooltip = strings.Replace(module.Tooltip, "24h%", "<b>24h%</b>", 1)
 
-	json, err := json.Marshal(w)
+	json, err := json.Marshal(module)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -173,7 +124,7 @@ func fillVarByEnvKey(key string, placeholder *string) error {
 				continue
 			}
 
-			return errors.New(fmt.Sprintf("incorrect %s", _envFavoriteCoin))
+			return errors.New("incorrect by key: " + key)
 		}
 		*placeholder = env
 	}

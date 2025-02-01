@@ -1,0 +1,17 @@
+version: '3'
+
+tasks:
+  build:
+    cmds:
+      - go build -o .bin/crypto-currency cmd/main.go && chmod +x .bin/crypto-currency
+
+  preview:
+    cmds:
+      - task: build
+      - .bin/crypto-currency | jq .
+
+  prod:
+    cmds:
+      - task: build
+      - mkdir -p ~/.config/waybar/scripts/
+      - \cp -f .bin/crypto-currency ~/.config/waybar/scripts
