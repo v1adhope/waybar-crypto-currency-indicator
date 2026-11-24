@@ -1,3 +1,7 @@
+> **Archived:** This project has moved to the
+> [bar-indicators](https://github.com/v1adhope/bar-indicators).
+> Development and maintenance continue there; this repository is no longer maintained.
+
 # Usage
 
 The module uses [CoinMarketCap API](https://coinmarketcap.com/api/)
